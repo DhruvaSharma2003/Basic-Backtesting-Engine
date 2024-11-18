@@ -1,0 +1,3 @@
+Timestamp : time when the data was collected
+Price : price of the cryptocurrency at that point of time
+Volume : volume of the cryptocurrency at that point of time
