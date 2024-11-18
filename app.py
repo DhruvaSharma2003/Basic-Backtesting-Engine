@@ -85,7 +85,7 @@ def plot_portfolio(data, start_date=None, end_date=None):
 
 # --- STREAMLIT APP ---
 
-st.title("Crypto Backtesting Engine with Trade Limit and Batch Size")
+st.title("Crypto Backtesting Engine")
 
 uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
 
