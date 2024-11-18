@@ -36,36 +36,42 @@ def backtest(data, initial_capital, fee, max_trades, batch_size):
     - pd.DataFrame: Data with portfolio value and trading points.
     """
     capital = initial_capital
-    position = 0  # Current open trades
+    positions = []  # Track open positions
     portfolio = []  # Portfolio value tracker
     buy_signals = []  # Track buy points for visualization
     sell_signals = []  # Track sell points for visualization
 
     for index, row in data.iterrows():
         # If Buy Signal and within max trades limit
-        if row['signal'] == 1 and position < max_trades:
+        if row['signal'] == 1 and len(positions) < max_trades:
             trade_amount = capital * batch_size  # Use only a portion of capital
             if trade_amount > 0:
-                position += trade_amount / row['price']  # Add to position
+                position = {
+                    'amount': trade_amount / row['price'],  # Amount of asset bought
+                    'entry_price': row['price']
+                }
+                positions.append(position)  # Add position to open trades
                 capital -= trade_amount  # Deduct capital used
-                position *= (1 - fee)  # Apply transaction fee
+                capital *= (1 - fee)  # Apply transaction fee
                 buy_signals.append((index, row['price']))  # Record buy signal
             else:
-                buy_signals.append((index, None))  # No buy due to no capital
+                buy_signals.append((index, None))  # No buy due to insufficient capital
         else:
             buy_signals.append((index, None))  # No buy
 
-        # If Sell Signal and position is open
-        if row['signal'] == -1 and position > 0:
-            capital += position * row['price']  # Sell all holdings
-            capital *= (1 - fee)  # Apply transaction fee
-            position = 0  # Reset position
-            sell_signals.append((index, row['price']))  # Record sell signal
+        # If Sell Signal and there are open positions
+        if row['signal'] == -1 and positions:
+            sell_price = row['price']
+            for position in positions:
+                capital += position['amount'] * sell_price  # Sell all holdings
+                capital *= (1 - fee)  # Apply transaction fee
+            positions = []  # Clear all positions after selling
+            sell_signals.append((index, sell_price))  # Record sell signal
         else:
             sell_signals.append((index, None))  # No sell
 
         # Track portfolio value
-        portfolio_value = capital + position * row['price']
+        portfolio_value = capital + sum(p['amount'] * row['price'] for p in positions)
         portfolio.append(portfolio_value)
 
     # Add buy/sell points and portfolio value to the data
@@ -126,7 +132,7 @@ def plot_portfolio(data, start_date=None, end_date=None):
 
 # --- STREAMLIT APP ---
 
-st.title("Crypto Backtesting Engine with Trade Constraints")
+st.title("Crypto Backtesting Engine")
 
 uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
 
