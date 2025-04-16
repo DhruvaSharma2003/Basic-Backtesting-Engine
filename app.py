@@ -8,8 +8,10 @@ from web3 import Web3
 import os
 
 # --- Secrets ---
-INFURA_URL = st.secrets["INFURA_URL"]
-PRIVATE_KEY = st.secrets["PRIVATE_KEY"]
+
+DEFAULT_INFURA = st.secrets["INFURA_URL"]
+DEFAULT_PRIVATE_KEY = st.secrets["PRIVATE_KEY"]
+
 
 # --- FUNCTIONS ---
 
