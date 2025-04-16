@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import web3
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 from web3 import Web3
