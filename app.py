@@ -4,13 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 from web3 import Web3
-from dotenv import load_dotenv
 import os
 
-# --- Load environment variables ---
-load_dotenv()
-DEFAULT_INFURA = os.getenv("INFURA_URL")
-DEFAULT_PRIVATE_KEY = os.getenv("PRIVATE_KEY")
+# --- Secrets ---
+INFURA_URL = st.secrets["INFURA_URL"]
+PRIVATE_KEY = st.secrets["PRIVATE_KEY"]
 
 # --- FUNCTIONS ---
 
