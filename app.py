@@ -39,21 +39,25 @@ def fetch_ohlc_data(coin_id):
     else:
         raise Exception("Failed to fetch OHLC data")
 
-def apply_strategy(df, short_window, long_window):
-    df['SMA_short'] = df['close'].rolling(window=short_window).mean()
-    df['SMA_long'] = df['close'].rolling(window=long_window).mean()
+def apply_strategy(df, short_window, long_window, price_col='close'):
+    df['SMA_short'] = df[price_col].rolling(window=short_window).mean()
+    df['SMA_long'] = df[price_col].rolling(window=long_window).mean()
     df['signal'] = 0
     df.loc[df['SMA_short'] > df['SMA_long'], 'signal'] = 1
     df.loc[df['SMA_short'] <= df['SMA_long'], 'signal'] = -1
+    df['buy_signal'] = np.where((df['signal'] == 1) & (df['signal'].shift(1) != 1), df[price_col], np.nan)
+    df['sell_signal'] = np.where((df['signal'] == -1) & (df['signal'].shift(1) != -1), df[price_col], np.nan)
     return df
 
 def plot_candlestick_with_sma(df):
     apds = []
     if 'SMA_short' in df.columns and 'SMA_long' in df.columns:
-        apds = [
-            mpf.make_addplot(df['SMA_short'], color='blue'),
-            mpf.make_addplot(df['SMA_long'], color='orange')
-        ]
+        apds.append(mpf.make_addplot(df['SMA_short'], color='blue'))
+        apds.append(mpf.make_addplot(df['SMA_long'], color='orange'))
+    if 'buy_signal' in df.columns:
+        apds.append(mpf.make_addplot(df['buy_signal'], type='scatter', markersize=100, marker='^', color='green'))
+    if 'sell_signal' in df.columns:
+        apds.append(mpf.make_addplot(df['sell_signal'], type='scatter', markersize=100, marker='v', color='red'))
     fig, _ = mpf.plot(df, type='candle', style='charles', addplot=apds, volume=False, returnfig=True)
     st.pyplot(fig)
 
@@ -83,11 +87,15 @@ def load_data(file):
     return data
 
 def evaluate_performance(data, initial_capital):
+    data['position'] = data['signal'].replace(-1, 0)
+    data['holdings'] = data['position'].shift().fillna(0) * data['price']
+    data['cash'] = initial_capital - (data['price'].diff() * data['position'].shift().fillna(0)).cumsum().fillna(0)
+    data['portfolio'] = data['cash'] + data['holdings']
     final_value = data['portfolio'].iloc[-1]
     total_return = (final_value - initial_capital) / initial_capital * 100
     max_drawdown = (data['portfolio'] / data['portfolio'].cummax() - 1).min() * 100
     daily_returns = data['portfolio'].pct_change().dropna()
-    sharpe_ratio = daily_returns.mean() / daily_returns.std() * np.sqrt(252)
+    sharpe_ratio = daily_returns.mean() / daily_returns.std() * np.sqrt(252) if not daily_returns.empty else 0
     return total_return, max_drawdown, sharpe_ratio
 
 # --- Streamlit App ---
@@ -108,11 +116,10 @@ if mode == "Live Data":
 
     try:
         df = fetch_ohlc_data(coin_id)
-        df = apply_strategy(df, short_window, long_window)
+        df = apply_strategy(df, short_window, long_window, price_col='close')
         st.subheader(f"Candlestick Chart with SMA for {coin_name}")
         plot_candlestick_with_sma(df)
 
-        # Web3 trade trigger
         if df['signal'].iloc[-1] == 1:
             if st.button("🚀 BUY Signal Detected: Execute Trade"):
                 w3 = Web3(Web3.HTTPProvider(DEFAULT_INFURA))
@@ -132,15 +139,18 @@ elif mode == "Historical Data Upload":
     if uploaded_file is not None:
         try:
             df = load_data(uploaded_file)
-            df['SMA_short'] = df['price'].rolling(window=short_window).mean()
-            df['SMA_long'] = df['price'].rolling(window=long_window).mean()
-            df['signal'] = 0
-            df.loc[df['SMA_short'] > df['SMA_long'], 'signal'] = 1
-            df.loc[df['SMA_short'] <= df['SMA_long'], 'signal'] = -1
-            df['portfolio'] = initial_capital
+            df = apply_strategy(df, short_window, long_window, price_col='price')
 
             st.subheader("Strategy Results on Uploaded Data")
-            st.line_chart(df[['price', 'SMA_short', 'SMA_long']])
+            fig, ax = plt.subplots(figsize=(12, 6))
+            ax.plot(df.index, df['price'], label='Price', alpha=0.5)
+            ax.plot(df.index, df['SMA_short'], label='SMA Short', linestyle='--')
+            ax.plot(df.index, df['SMA_long'], label='SMA Long', linestyle='--')
+            ax.scatter(df.index, df['buy_signal'], label='Buy', marker='^', color='green', s=100)
+            ax.scatter(df.index, df['sell_signal'], label='Sell', marker='v', color='red', s=100)
+            ax.set_title("Backtest with Buy/Sell Signals")
+            ax.legend()
+            st.pyplot(fig)
 
             total_return, max_drawdown, sharpe_ratio = evaluate_performance(df, initial_capital)
             st.metric("Total Return (%)", f"{total_return:.2f}")
