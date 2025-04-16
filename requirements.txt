@@ -4,3 +4,4 @@ numpy
 requests
 web3
 plotly
+statsmodels
