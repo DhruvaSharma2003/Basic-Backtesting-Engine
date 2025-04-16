@@ -18,9 +18,20 @@ account = w3.eth.account.from_key(PRIVATE_KEY)
 
 # Function to get live price from Binance REST API
 def get_live_price(symbol="BTCUSDT"):
-    url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+    url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}"
     response = requests.get(url)
-    return float(response.json()['price'])
+
+    try:
+        data = response.json()
+        if "price" in data:
+            return float(data["price"])
+        else:
+            st.error(f"❌ Binance API Error: {data.get('msg', 'Invalid Symbol or Request')}")
+            return None
+    except Exception as e:
+        st.error(f"❌ Failed to fetch live price: {str(e)}")
+        return None
+
 
 # Apply moving average strategy
 def apply_strategy(data, short_window, long_window):
@@ -68,6 +79,12 @@ if "timestamps" not in st.session_state:
 
 # Fetch live price and update state
 price = get_live_price(symbol)
+if price is not None:
+    st.session_state.live_prices.append(price)
+    st.session_state.timestamps.append(datetime.datetime.now())
+else:
+    st.stop()  # stop further execution if price fetch failed
+
 st.session_state.live_prices.append(price)
 st.session_state.timestamps.append(datetime.datetime.now())
 
