@@ -162,3 +162,4 @@ elif mode == "Historical Data Upload":
 
         except Exception as e:
             st.error(f"File Error: {str(e)}")
+
