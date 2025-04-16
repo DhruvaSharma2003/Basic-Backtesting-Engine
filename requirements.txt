@@ -3,5 +3,4 @@ pandas
 numpy
 matplotlib
 web3
-mplfinance
 plotly
