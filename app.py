@@ -6,6 +6,10 @@ import plotly.graph_objects as go
 from datetime import datetime
 from web3 import Web3
 import os
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.ar_model import AutoReg
+import warnings
+warnings.filterwarnings("ignore")
 
 # --- Secrets ---
 DEFAULT_INFURA = st.secrets["INFURA_URL"]
@@ -142,6 +146,29 @@ def evaluate_performance(data, initial_capital):
     sharpe_ratio = daily_returns.mean() / daily_returns.std() * np.sqrt(252) if not daily_returns.empty else 0
     return total_return, max_drawdown, sharpe_ratio
 
+def forecast_prices(df, days, model_type='ARIMA'):
+    y = df['close'] if 'close' in df.columns else df['price']
+    y.index = pd.to_datetime(y.index)
+
+    if len(y) < 20:
+        st.warning("Not enough data points to forecast.")
+        return None, None
+
+    model = None
+    if model_type == 'AR':
+        model = AutoReg(y, lags=5).fit()
+    elif model_type == 'IMA':
+        model = ARIMA(y, order=(0, 1, 1)).fit()
+    else:  # ARIMA
+        model = ARIMA(y, order=(5, 1, 0)).fit()
+
+    forecast = model.forecast(steps=days)
+    forecast_index = pd.date_range(start=y.index[-1] + pd.Timedelta(days=1), periods=days)
+    forecast_series = pd.Series(forecast, index=forecast_index)
+
+    return y, forecast_series
+
+
 # --- Streamlit App ---
 st.title("🔍 Crypto Backtesting Engine + Web3 Execution")
 
@@ -167,6 +194,22 @@ if mode == "Live Data":
         df = fetch_ohlc_data(coin_id)
         df = apply_strategy(df, short_window, long_window, price_col='close')
         plot_interactive_candles(df, coin_name)
+
+        st.subheader("📈 Forecast Future Prices")
+
+        model_choice = st.selectbox("Select Forecasting Model", ["AR", "IMA", "ARIMA"])
+        days_to_forecast = st.slider("Days to Forecast", 1, 30, 7)
+
+        if st.button("Run Forecast"):
+            actual_series, forecast_series = forecast_prices(df, days=days_to_forecast, model_type=model_choice)
+
+            if actual_series is not None:
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=actual_series.index, y=actual_series.values, mode='lines', name="Historical"))
+                fig.add_trace(go.Scatter(x=forecast_series.index, y=forecast_series.values, mode='lines', name="Forecast", line=dict(dash='dash')))
+                fig.update_layout(title="Time Series Forecast", xaxis_title="Date", yaxis_title="Price")
+                st.plotly_chart(fig, use_container_width=True)
+
 
         if df['signal'].iloc[-1] == 1:
             if st.button("🚀 BUY Signal Detected: Execute Trade"):
@@ -199,6 +242,23 @@ elif mode == "Historical Data Upload":
             fig.add_trace(go.Scatter(x=df.index, y=df['sell_signal'], mode='markers', name='Sell Signal', marker=dict(color='red', symbol='triangle-down', size=10)))
             fig.update_layout(title="Backtest with Buy/Sell Signals", xaxis_title='Time', yaxis_title='Price')
             st.plotly_chart(fig, use_container_width=True)
+            
+            
+            st.subheader("📈 Forecast Future Prices")
+
+            model_choice = st.selectbox("Select Forecasting Model", ["AR", "IMA", "ARIMA"])
+            days_to_forecast = st.slider("Days to Forecast", 1, 30, 7)
+
+            if st.button("Run Forecast"):
+                actual_series, forecast_series = forecast_prices(df, days=days_to_forecast, model_type=model_choice)
+
+                if actual_series is not None:
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=actual_series.index, y=actual_series.values, mode='lines', name="Historical"))
+                    fig.add_trace(go.Scatter(x=forecast_series.index, y=forecast_series.values, mode='lines', name="Forecast", line=dict(dash='dash')))
+                    fig.update_layout(title="Time Series Forecast", xaxis_title="Date", yaxis_title="Price")
+                    st.plotly_chart(fig, use_container_width=True)
+
 
             total_return, max_drawdown, sharpe_ratio = evaluate_performance(df, initial_capital)
             st.metric("Total Return (%)", f"{total_return:.2f}")
