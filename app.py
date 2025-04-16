@@ -78,6 +78,9 @@ def simulate_trade(account, w3):
         signed_tx = account.sign_transaction(tx)
         tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
         return w3.to_hex(tx_hash)
+    except AttributeError:
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        return w3.to_hex(tx_hash)
     except Exception as e:
         st.error(f"Transaction Failed: {str(e)}")
         return None
@@ -110,10 +113,13 @@ short_window = st.sidebar.number_input("Short SMA", min_value=1, value=5)
 long_window = st.sidebar.number_input("Long SMA", min_value=1, value=15)
 
 if mode == "Historical Data Upload":
-    initial_capital = st.sidebar.number_input("Initial Capital", min_value=1, value=10000)
-    fee = st.sidebar.number_input("Transaction Fee (%)", min_value=0.0, value=0.1) / 100
-    max_trades = st.sidebar.number_input("Max Trades", min_value=1, value=1)
-    batch_size = st.sidebar.slider("Batch Size (%)", min_value=1, max_value=100, value=20) / 100
+    with st.sidebar:
+        st.markdown("<div style='border:2px solid #1f77b4; padding:10px; border-radius:5px;'>", unsafe_allow_html=True)
+        initial_capital = st.number_input("Initial Capital", min_value=1, value=10000)
+        fee = st.number_input("Transaction Fee (%)", min_value=0.0, value=0.1) / 100
+        max_trades = st.number_input("Max Trades", min_value=1, value=1)
+        batch_size = st.slider("Batch Size (%)", min_value=1, max_value=100, value=20) / 100
+        st.markdown("</div>", unsafe_allow_html=True)
 
 if mode == "Live Data":
     coin_name = st.selectbox("Choose Crypto", list(CRYPTO_OPTIONS.keys()))
@@ -162,4 +168,3 @@ elif mode == "Historical Data Upload":
 
         except Exception as e:
             st.error(f"File Error: {str(e)}")
-
