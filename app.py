@@ -2,8 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import requests
-import matplotlib.pyplot as plt
-import mplfinance as mpf
+import plotly.graph_objects as go
 from datetime import datetime
 from web3 import Web3
 import os
@@ -49,17 +48,21 @@ def apply_strategy(df, short_window, long_window, price_col='close'):
     df['sell_signal'] = np.where((df['signal'] == -1) & (df['signal'].shift(1) != -1), df[price_col], np.nan)
     return df
 
-def plot_candlestick_with_sma(df):
-    apds = []
-    if 'SMA_short' in df.columns and 'SMA_long' in df.columns:
-        apds.append(mpf.make_addplot(df['SMA_short'], color='blue'))
-        apds.append(mpf.make_addplot(df['SMA_long'], color='orange'))
-    if 'buy_signal' in df.columns:
-        apds.append(mpf.make_addplot(df['buy_signal'], type='scatter', markersize=100, marker='^', color='green'))
-    if 'sell_signal' in df.columns:
-        apds.append(mpf.make_addplot(df['sell_signal'], type='scatter', markersize=100, marker='v', color='red'))
-    fig, _ = mpf.plot(df, type='candle', style='charles', addplot=apds, volume=False, returnfig=True)
-    st.pyplot(fig)
+def plot_interactive_candles(df, coin_name):
+    fig = go.Figure(data=[
+        go.Candlestick(x=df.index,
+                       open=df['open'],
+                       high=df['high'],
+                       low=df['low'],
+                       close=df['close'],
+                       name='Candles'),
+        go.Scatter(x=df.index, y=df['SMA_short'], mode='lines', name='SMA Short'),
+        go.Scatter(x=df.index, y=df['SMA_long'], mode='lines', name='SMA Long'),
+        go.Scatter(x=df.index, y=df['buy_signal'], mode='markers', name='Buy Signal', marker=dict(color='green', size=10, symbol='triangle-up')),
+        go.Scatter(x=df.index, y=df['sell_signal'], mode='markers', name='Sell Signal', marker=dict(color='red', size=10, symbol='triangle-down')),
+    ])
+    fig.update_layout(title=f"Candlestick Chart with SMA for {coin_name}", xaxis_title='Time', yaxis_title='Price')
+    st.plotly_chart(fig, use_container_width=True)
 
 def simulate_trade(account, w3):
     try:
@@ -105,10 +108,12 @@ mode = st.radio("Select Mode", ["Live Data", "Historical Data Upload"])
 
 short_window = st.sidebar.number_input("Short SMA", min_value=1, value=5)
 long_window = st.sidebar.number_input("Long SMA", min_value=1, value=15)
-initial_capital = st.sidebar.number_input("Initial Capital", min_value=1, value=10000)
-fee = st.sidebar.number_input("Transaction Fee (%)", min_value=0.0, value=0.1) / 100
-max_trades = st.sidebar.number_input("Max Trades", min_value=1, value=1)
-batch_size = st.sidebar.slider("Batch Size (%)", min_value=1, max_value=100, value=20) / 100
+
+if mode == "Historical Data Upload":
+    initial_capital = st.sidebar.number_input("Initial Capital", min_value=1, value=10000)
+    fee = st.sidebar.number_input("Transaction Fee (%)", min_value=0.0, value=0.1) / 100
+    max_trades = st.sidebar.number_input("Max Trades", min_value=1, value=1)
+    batch_size = st.sidebar.slider("Batch Size (%)", min_value=1, max_value=100, value=20) / 100
 
 if mode == "Live Data":
     coin_name = st.selectbox("Choose Crypto", list(CRYPTO_OPTIONS.keys()))
@@ -117,8 +122,7 @@ if mode == "Live Data":
     try:
         df = fetch_ohlc_data(coin_id)
         df = apply_strategy(df, short_window, long_window, price_col='close')
-        st.subheader(f"Candlestick Chart with SMA for {coin_name}")
-        plot_candlestick_with_sma(df)
+        plot_interactive_candles(df, coin_name)
 
         if df['signal'].iloc[-1] == 1:
             if st.button("🚀 BUY Signal Detected: Execute Trade"):
@@ -142,15 +146,14 @@ elif mode == "Historical Data Upload":
             df = apply_strategy(df, short_window, long_window, price_col='price')
 
             st.subheader("Strategy Results on Uploaded Data")
-            fig, ax = plt.subplots(figsize=(12, 6))
-            ax.plot(df.index, df['price'], label='Price', alpha=0.5)
-            ax.plot(df.index, df['SMA_short'], label='SMA Short', linestyle='--')
-            ax.plot(df.index, df['SMA_long'], label='SMA Long', linestyle='--')
-            ax.scatter(df.index, df['buy_signal'], label='Buy', marker='^', color='green', s=100)
-            ax.scatter(df.index, df['sell_signal'], label='Sell', marker='v', color='red', s=100)
-            ax.set_title("Backtest with Buy/Sell Signals")
-            ax.legend()
-            st.pyplot(fig)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df.index, y=df['price'], mode='lines', name='Price'))
+            fig.add_trace(go.Scatter(x=df.index, y=df['SMA_short'], mode='lines', name='SMA Short'))
+            fig.add_trace(go.Scatter(x=df.index, y=df['SMA_long'], mode='lines', name='SMA Long'))
+            fig.add_trace(go.Scatter(x=df.index, y=df['buy_signal'], mode='markers', name='Buy Signal', marker=dict(color='green', symbol='triangle-up', size=10)))
+            fig.add_trace(go.Scatter(x=df.index, y=df['sell_signal'], mode='markers', name='Sell Signal', marker=dict(color='red', symbol='triangle-down', size=10)))
+            fig.update_layout(title="Backtest with Buy/Sell Signals", xaxis_title='Time', yaxis_title='Price')
+            st.plotly_chart(fig, use_container_width=True)
 
             total_return, max_drawdown, sharpe_ratio = evaluate_performance(df, initial_capital)
             st.metric("Total Return (%)", f"{total_return:.2f}")
