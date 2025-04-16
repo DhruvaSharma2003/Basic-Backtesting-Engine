@@ -92,11 +92,49 @@ def load_data(file):
     data.set_index('timestamp', inplace=True)
     return data
 
+def backtest(data, initial_capital, fee, max_trades, batch_size):
+    capital = initial_capital
+    positions = []
+    portfolio = []
+    buy_signals = []
+    sell_signals = []
+
+    for index, row in data.iterrows():
+        if row['signal'] == 1 and len(positions) < max_trades:
+            trade_amount = capital * batch_size
+            if trade_amount > 0:
+                position = {
+                    'amount': trade_amount / row['price'],
+                    'entry_price': row['price']
+                }
+                positions.append(position)
+                capital -= trade_amount
+                capital *= (1 - fee)
+                buy_signals.append((index, row['price']))
+            else:
+                buy_signals.append((index, None))
+        else:
+            buy_signals.append((index, None))
+
+        if row['signal'] == -1 and positions:
+            sell_price = row['price']
+            for position in positions:
+                capital += position['amount'] * sell_price
+                capital *= (1 - fee)
+            positions = []
+            sell_signals.append((index, sell_price))
+        else:
+            sell_signals.append((index, None))
+
+        portfolio_value = capital + sum(p['amount'] * row['price'] for p in positions)
+        portfolio.append(portfolio_value)
+
+    data['portfolio'] = portfolio
+    data['buy_signal'] = [x[1] for x in buy_signals]
+    data['sell_signal'] = [x[1] for x in sell_signals]
+    return data
+
 def evaluate_performance(data, initial_capital):
-    data['position'] = data['signal'].replace(-1, 0)
-    data['holdings'] = data['position'].shift().fillna(0) * data['price']
-    data['cash'] = initial_capital - (data['price'].diff() * data['position'].shift().fillna(0)).cumsum().fillna(0)
-    data['portfolio'] = data['cash'] + data['holdings']
     final_value = data['portfolio'].iloc[-1]
     total_return = (final_value - initial_capital) / initial_capital * 100
     max_drawdown = (data['portfolio'] / data['portfolio'].cummax() - 1).min() * 100
@@ -150,6 +188,7 @@ elif mode == "Historical Data Upload":
         try:
             df = load_data(uploaded_file)
             df = apply_strategy(df, short_window, long_window, price_col='price')
+            df = backtest(df, initial_capital, fee, max_trades, batch_size)
 
             st.subheader("Strategy Results on Uploaded Data")
             fig = go.Figure()
@@ -168,3 +207,4 @@ elif mode == "Historical Data Upload":
 
         except Exception as e:
             st.error(f"File Error: {str(e)}")
+
