@@ -74,7 +74,7 @@ def forecast_prices(df, days_to_display, model_type='ARIMA'):
         total_days = 7
         forecast = model.forecast(steps=total_days)
         forecast_index = pd.date_range(start=y.index[-1] + pd.Timedelta(days=1), periods=total_days)
-        forecast_series = pd.Series(forecast, index=forecast_index)
+        forecast_series = pd.Series(forecast.values, index=forecast_index)
 
         selected_forecast = forecast_series.iloc[:days_to_display]
 
