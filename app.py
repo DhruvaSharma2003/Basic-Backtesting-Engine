@@ -64,7 +64,7 @@ def forecast_prices(df, days, model_type='ARIMA'):
 
     model = None
     if model_type == 'AR':
-        model = AutoReg(y, lags=5).fit()
+        model = AutoReg(y, lags=1).fit()
     elif model_type == 'IMA':
         model = ARIMA(y, order=(0, 1, 1)).fit()
     else:
