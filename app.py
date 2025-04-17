@@ -54,7 +54,7 @@ def apply_strategy(df, short_window, long_window, price_col='close'):
     df['sell_signal'] = np.where((df['signal'] == -1) & (df['signal'].shift(1) != -1), df[price_col], np.nan)
     return df
 
-def forecast_prices(df, days, model_type='ARIMA'):
+def forecast_prices(df, days_to_display, model_type='ARIMA'):
     y = df['close'] if 'close' in df.columns else df['price']
     y.index = pd.to_datetime(y.index)
 
@@ -63,21 +63,29 @@ def forecast_prices(df, days, model_type='ARIMA'):
         return None, None
 
     model = None
-    if model_type == 'AR':
-        model = AutoReg(y, lags=1).fit()
-    elif model_type == 'IMA':
-        model = ARIMA(y, order=(0, 1, 1)).fit()
-    else:
-        model = ARIMA(y, order=(5, 1, 0)).fit()
+    try:
+        if model_type == 'AR':
+            model = AutoReg(y, lags=5).fit()
+        elif model_type == 'IMA':
+            model = ARIMA(y, order=(0, 1, 1)).fit()
+        else:
+            model = ARIMA(y, order=(5, 1, 0)).fit()
 
-    forecast = model.forecast(steps=days)
-    forecast_index = pd.date_range(start=y.index[-1] + pd.Timedelta(days=1), periods=days)
-    forecast_series = pd.Series(forecast, index=forecast_index)
+        total_days = 7
+        forecast = model.forecast(steps=total_days)
+        forecast_index = pd.date_range(start=y.index[-1] + pd.Timedelta(days=1), periods=total_days)
+        forecast_series = pd.Series(forecast, index=forecast_index)
 
-    st.subheader("Forecasted Values")
-    st.dataframe(forecast_series.rename("Forecast Price"))
+        selected_forecast = forecast_series.iloc[:days_to_display]
 
-    return y, forecast_series
+        st.subheader("Forecasted Values")
+        st.dataframe(selected_forecast.rename("Forecast Price"))
+
+        return y, selected_forecast
+
+    except Exception as e:
+        st.error(f"Forecasting Error: {str(e)}")
+        return None, None
 
 def simulate_trade(account, w3):
     try:
