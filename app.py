@@ -74,6 +74,9 @@ def forecast_prices(df, days, model_type='ARIMA'):
     forecast_index = pd.date_range(start=y.index[-1] + pd.Timedelta(days=1), periods=days)
     forecast_series = pd.Series(forecast, index=forecast_index)
 
+    st.subheader("Forecasted Values")
+    st.dataframe(forecast_series.rename("Forecast Price"))
+
     return y, forecast_series
 
 def simulate_trade(account, w3):
