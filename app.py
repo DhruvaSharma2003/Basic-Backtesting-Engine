@@ -35,6 +35,8 @@ def fetch_ohlc_data(coin_id):
     response = requests.get(url)
     if response.status_code == 200:
         raw = response.json()
+        if len(raw) == 0:
+            raise Exception("Empty OHLC response from API")
         df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close"])
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
         df.set_index("timestamp", inplace=True)
@@ -65,7 +67,7 @@ def forecast_prices(df, days, model_type='ARIMA'):
         model = AutoReg(y, lags=5).fit()
     elif model_type == 'IMA':
         model = ARIMA(y, order=(0, 1, 1)).fit()
-    else:  # ARIMA
+    else:
         model = ARIMA(y, order=(5, 1, 0)).fit()
 
     forecast = model.forecast(steps=days)
@@ -189,7 +191,7 @@ if mode == "Live Data":
             go.Scatter(x=df.index, y=df['sell_signal'], mode='markers', name='Sell Signal', marker=dict(color='red', size=10, symbol='triangle-down')),
         ])
         if forecast_series is not None:
-            fig.add_trace(go.Scatter(x=forecast_series.index, y=forecast_series.values, mode='lines', name='Forecast', line=dict(dash='dot', color='orange')))
+            fig.add_trace(go.Scatter(x=forecast_series.index, y=forecast_series.values, mode='lines+markers', name='Forecast', line=dict(dash='dot', color='orange')))
 
         fig.update_layout(title=f"Candlestick Chart with SMA + Forecast for {coin_name}", xaxis_title='Time', yaxis_title='Price')
         st.plotly_chart(fig, use_container_width=True)
@@ -225,7 +227,7 @@ elif mode == "Historical Data Upload":
             fig.add_trace(go.Scatter(x=df.index, y=df['buy_signal'], mode='markers', name='Buy Signal', marker=dict(color='green', symbol='triangle-up', size=10)))
             fig.add_trace(go.Scatter(x=df.index, y=df['sell_signal'], mode='markers', name='Sell Signal', marker=dict(color='red', symbol='triangle-down', size=10)))
             if forecast_series is not None:
-                fig.add_trace(go.Scatter(x=forecast_series.index, y=forecast_series.values, mode='lines', name='Forecast', line=dict(dash='dot', color='orange')))
+                fig.add_trace(go.Scatter(x=forecast_series.index, y=forecast_series.values, mode='lines+markers', name='Forecast', line=dict(dash='dot', color='orange')))
             fig.update_layout(title="Backtest + Forecast with Buy/Sell Signals", xaxis_title='Time', yaxis_title='Price')
             st.plotly_chart(fig, use_container_width=True)
 
@@ -236,3 +238,4 @@ elif mode == "Historical Data Upload":
 
         except Exception as e:
             st.error(f"File Error: {str(e)}")
+
