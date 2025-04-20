@@ -173,7 +173,7 @@ mode = st.radio("Select Mode", ["Live Data", "Historical Data Upload"])
 short_window = st.sidebar.number_input("Short SMA", min_value=1, value=5)
 long_window = st.sidebar.number_input("Long SMA", min_value=1, value=15)
 
-forecast_days = st.sidebar.slider("Days to Forecast", 1, 7, 3)
+forecast_days = st.sidebar.slider("Days to Forecast", 1, 7, 1)
 model_choice = st.sidebar.selectbox("Forecasting Model", ["AR", "IMA", "ARIMA"])
 
 if mode == "Historical Data Upload":
