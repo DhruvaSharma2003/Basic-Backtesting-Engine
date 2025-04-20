@@ -228,7 +228,7 @@ elif mode == "Historical Data Upload":
             df = load_data(uploaded_file)
             df = apply_strategy(df, short_window, long_window, price_col='price')
             df = backtest(df, initial_capital, fee, max_trades, batch_size)
-            actual_series, forecast_series = forecast_prices(df, days=forecast_days, model_type=model_choice)
+            actual_series, forecast_series = forecast_prices(df, forecast_days, model_type=model_choice)
 
             st.subheader("Strategy Results on Uploaded Data")
             fig = go.Figure()
