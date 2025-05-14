@@ -44,14 +44,32 @@ def fetch_ohlc_data(coin_id):
     else:
         raise Exception("Failed to fetch OHLC data")
 
-def apply_strategy(df, short_window, long_window, price_col='close'):
-    df['SMA_short'] = df[price_col].rolling(window=short_window).mean()
-    df['SMA_long'] = df[price_col].rolling(window=long_window).mean()
+def apply_strategy(df, strategy, **kwargs):
+    df = df.copy()
     df['signal'] = 0
-    df.loc[df['SMA_short'] > df['SMA_long'], 'signal'] = 1
-    df.loc[df['SMA_short'] <= df['SMA_long'], 'signal'] = -1
-    df['buy_signal'] = np.where((df['signal'] == 1) & (df['signal'].shift(1) != 1), df[price_col], np.nan)
-    df['sell_signal'] = np.where((df['signal'] == -1) & (df['signal'].shift(1) != -1), df[price_col], np.nan)
+    df['buy_signal'] = np.nan
+    df['sell_signal'] = np.nan
+
+    if strategy == "Simple Moving Average (SMA)":
+        short_window = kwargs.get("short_window", 5)
+        long_window = kwargs.get("long_window", 15)
+        df['SMA_short'] = df['close'].rolling(window=short_window).mean()
+        df['SMA_long'] = df['close'].rolling(window=long_window).mean()
+        df.loc[df['SMA_short'] > df['SMA_long'], 'signal'] = 1
+        df.loc[df['SMA_short'] <= df['SMA_long'], 'signal'] = -1
+
+    elif strategy == "Bollinger Bands":
+        period = kwargs.get("period", 20)
+        std_dev = kwargs.get("std_dev", 2.0)
+        df['MA'] = df['close'].rolling(window=period).mean()
+        df['BB_up'] = df['MA'] + std_dev * df['close'].rolling(window=period).std()
+        df['BB_down'] = df['MA'] - std_dev * df['close'].rolling(window=period).std()
+        df.loc[df['close'] < df['BB_down'], 'signal'] = 1
+        df.loc[df['close'] > df['BB_up'], 'signal'] = -1
+
+    df['buy_signal'] = np.where((df['signal'] == 1) & (df['signal'].shift(1) != 1), df['close'], np.nan)
+    df['sell_signal'] = np.where((df['signal'] == -1) & (df['signal'].shift(1) != -1), df['close'], np.nan)
+
     return df
 
 def forecast_prices(df, days_to_display, model_type='ARIMA'):
@@ -100,9 +118,6 @@ def simulate_trade(account, w3):
         }
         signed_tx = account.sign_transaction(tx)
         tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        return w3.to_hex(tx_hash)
-    except AttributeError:
-        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
         return w3.to_hex(tx_hash)
     except Exception as e:
         st.error(f"Transaction Failed: {str(e)}")
@@ -166,12 +181,20 @@ def evaluate_performance(data, initial_capital):
     return total_return, max_drawdown, sharpe_ratio
 
 # --- Streamlit App ---
-st.title("🔍 Crypto Backtesting Engine + Web3 Execution")
+st.title("\ud83d\udd0d Crypto Backtesting Engine + Web3 Execution")
 
 mode = st.radio("Select Mode", ["Live Data", "Historical Data Upload"])
 
-short_window = st.sidebar.number_input("Short SMA", min_value=1, value=5)
-long_window = st.sidebar.number_input("Long SMA", min_value=1, value=15)
+strategy_choice = st.sidebar.selectbox("Select Strategy", ["Simple Moving Average (SMA)", "Bollinger Bands"])
+
+if strategy_choice == "Simple Moving Average (SMA)":
+    short_window = st.sidebar.number_input("Short SMA", min_value=1, value=5)
+    long_window = st.sidebar.number_input("Long SMA", min_value=1, value=15)
+    strategy_params = {"short_window": short_window, "long_window": long_window}
+elif strategy_choice == "Bollinger Bands":
+    bb_period = st.sidebar.number_input("Period", min_value=1, value=20)
+    bb_std_dev = st.sidebar.number_input("Std Dev Multiplier", min_value=0.1, value=2.0)
+    strategy_params = {"period": bb_period, "std_dev": bb_std_dev}
 
 forecast_days = st.sidebar.slider("Days to Forecast", 1, 7, 1)
 model_choice = st.sidebar.selectbox("Forecasting Model", ["AR", "IMA", "ARIMA"])
@@ -191,24 +214,29 @@ if mode == "Live Data":
 
     try:
         df = fetch_ohlc_data(coin_id)
-        df = apply_strategy(df, short_window, long_window, price_col='close')
+        df = apply_strategy(df, strategy_choice, **strategy_params)
         actual_series, forecast_series = forecast_prices(df, forecast_days, model_type=model_choice)
 
         fig = go.Figure(data=[
             go.Candlestick(x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name='Candles'),
-            go.Scatter(x=df.index, y=df['SMA_short'], mode='lines', name='SMA Short'),
-            go.Scatter(x=df.index, y=df['SMA_long'], mode='lines', name='SMA Long'),
             go.Scatter(x=df.index, y=df['buy_signal'], mode='markers', name='Buy Signal', marker=dict(color='green', size=10, symbol='triangle-up')),
             go.Scatter(x=df.index, y=df['sell_signal'], mode='markers', name='Sell Signal', marker=dict(color='red', size=10, symbol='triangle-down')),
         ])
+        if strategy_choice == "Simple Moving Average (SMA)":
+            fig.add_trace(go.Scatter(x=df.index, y=df['SMA_short'], mode='lines', name='SMA Short'))
+            fig.add_trace(go.Scatter(x=df.index, y=df['SMA_long'], mode='lines', name='SMA Long'))
+        elif strategy_choice == "Bollinger Bands":
+            fig.add_trace(go.Scatter(x=df.index, y=df['BB_up'], mode='lines', name='Upper Band', line=dict(color='blue', dash='dot')))
+            fig.add_trace(go.Scatter(x=df.index, y=df['BB_down'], mode='lines', name='Lower Band', line=dict(color='blue', dash='dot')))
+
         if forecast_series is not None:
             fig.add_trace(go.Scatter(x=forecast_series.index, y=forecast_series.values, mode='lines+markers', name='Forecast', line=dict(dash='dot', color='orange')))
 
-        fig.update_layout(title=f"Candlestick Chart with SMA + Forecast for {coin_name}", xaxis_title='Time', yaxis_title='Price')
+        fig.update_layout(title=f"Candlestick Chart + {strategy_choice} + Forecast for {coin_name}", xaxis_title='Time', yaxis_title='Price')
         st.plotly_chart(fig, use_container_width=True)
 
         if df['signal'].iloc[-1] == 1:
-            if st.button("🚀 BUY Signal Detected: Execute Trade"):
+            if st.button("\ud83d\ude80 BUY Signal Detected: Execute Trade"):
                 w3 = Web3(Web3.HTTPProvider(DEFAULT_INFURA))
                 account = w3.eth.account.from_key(DEFAULT_PRIVATE_KEY)
                 tx_hash = simulate_trade(account, w3)
@@ -226,19 +254,25 @@ elif mode == "Historical Data Upload":
     if uploaded_file is not None:
         try:
             df = load_data(uploaded_file)
-            df = apply_strategy(df, short_window, long_window, price_col='price')
+            df = apply_strategy(df, strategy_choice, **strategy_params)
             df = backtest(df, initial_capital, fee, max_trades, batch_size)
             actual_series, forecast_series = forecast_prices(df, forecast_days, model_type=model_choice)
 
             st.subheader("Strategy Results on Uploaded Data")
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=df.index, y=df['price'], mode='lines', name='Price'))
-            fig.add_trace(go.Scatter(x=df.index, y=df['SMA_short'], mode='lines', name='SMA Short'))
-            fig.add_trace(go.Scatter(x=df.index, y=df['SMA_long'], mode='lines', name='SMA Long'))
             fig.add_trace(go.Scatter(x=df.index, y=df['buy_signal'], mode='markers', name='Buy Signal', marker=dict(color='green', symbol='triangle-up', size=10)))
             fig.add_trace(go.Scatter(x=df.index, y=df['sell_signal'], mode='markers', name='Sell Signal', marker=dict(color='red', symbol='triangle-down', size=10)))
+            if strategy_choice == "Simple Moving Average (SMA)":
+                fig.add_trace(go.Scatter(x=df.index, y=df['SMA_short'], mode='lines', name='SMA Short'))
+                fig.add_trace(go.Scatter(x=df.index, y=df['SMA_long'], mode='lines', name='SMA Long'))
+            elif strategy_choice == "Bollinger Bands":
+                fig.add_trace(go.Scatter(x=df.index, y=df['BB_up'], mode='lines', name='Upper Band', line=dict(color='blue', dash='dot')))
+                fig.add_trace(go.Scatter(x=df.index, y=df['BB_down'], mode='lines', name='Lower Band', line=dict(color='blue', dash='dot')))
+
             if forecast_series is not None:
                 fig.add_trace(go.Scatter(x=forecast_series.index, y=forecast_series.values, mode='lines+markers', name='Forecast', line=dict(dash='dot', color='orange')))
+
             fig.update_layout(title="Backtest + Forecast with Buy/Sell Signals", xaxis_title='Time', yaxis_title='Price')
             st.plotly_chart(fig, use_container_width=True)
 
@@ -249,4 +283,3 @@ elif mode == "Historical Data Upload":
 
         except Exception as e:
             st.error(f"File Error: {str(e)}")
-
