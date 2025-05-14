@@ -328,6 +328,31 @@ if mode == "Historical Data Upload":
         batch_size = st.slider("Batch Size (%)", min_value=1, max_value=100, value=20) / 100
         st.markdown("</div>", unsafe_allow_html=True)
 
+    # Clear backtest log when sidebar inputs change
+    if "prev_params" not in st.session_state:
+        st.session_state.prev_params = {
+            "capital": initial_capital,
+            "fee": fee,
+            "trades": max_trades,
+            "batch": batch_size
+        }
+
+    params_changed = (
+        st.session_state.prev_params["capital"] != initial_capital or
+        st.session_state.prev_params["fee"] != fee or
+        st.session_state.prev_params["trades"] != max_trades or
+        st.session_state.prev_params["batch"] != batch_size
+    )
+
+    if params_changed:
+        st.session_state.backtest_log = []
+        st.session_state.prev_params = {
+            "capital": initial_capital,
+            "fee": fee,
+            "trades": max_trades,
+            "batch": batch_size
+        }
+
 if mode == "Live Data":
     coin_name = st.selectbox("Choose Crypto", list(CRYPTO_OPTIONS.keys()))
     coin_id = CRYPTO_OPTIONS[coin_name]
