@@ -120,7 +120,7 @@ def simulate_trade(account, w3):
             'chainId': 11155111
         }
         signed_tx = account.sign_transaction(tx)
-        tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
         return w3.to_hex(tx_hash)
     except Exception as e:
         st.error(f"Transaction Failed: {str(e)}")
