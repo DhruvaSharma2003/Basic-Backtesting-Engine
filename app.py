@@ -8,6 +8,10 @@ from web3 import Web3
 import os
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.ar_model import AutoReg
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from prophet import Prophet
+from sklearn.metrics import mean_squared_error
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -72,7 +76,7 @@ def apply_strategy(df, strategy, **kwargs):
 
     return df
 
-def forecast_prices(df, days_to_display, model_type='ARIMA'):
+def forecast_prices(df, days_to_display):
     y = df['close'] if 'close' in df.columns else df['price']
     y.index = pd.to_datetime(y.index)
 
@@ -80,30 +84,29 @@ def forecast_prices(df, days_to_display, model_type='ARIMA'):
         st.warning("Not enough data points to forecast.")
         return None, None
 
-    model = None
-    try:
-        if model_type == 'AR':
-            model = AutoReg(y, lags=5).fit()
-        elif model_type == 'IMA':
-            model = ARIMA(y, order=(0, 1, 1)).fit()
-        else:
-            model = ARIMA(y, order=(5, 1, 0)).fit()
+    model_outputs = evaluate_models(y, days_to_display)
+    if not model_outputs:
+        st.error("Forecasting failed for all models.")
+        return y, None
 
-        total_days = 7
-        forecast = model.forecast(steps=total_days)
-        forecast_index = pd.date_range(start=y.index[-1] + pd.Timedelta(days=1), periods=total_days)
-        forecast_series = pd.Series(forecast.values, index=forecast_index)
+    sorted_models = sorted(model_outputs.items(), key=lambda x: x[1][1])  # sort by RMSE%
 
-        selected_forecast = forecast_series.iloc[:days_to_display]
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📉 Forecast Model Comparison")
+    for name, (forecast, rmse) in sorted_models:
+        st.sidebar.write(f"{name}: {rmse:.2f}% error")
 
-        st.subheader("Forecasted Values")
-        st.dataframe(selected_forecast.rename("Forecast Price"))
+    best_model = sorted_models[0][0]
+    selected_model = st.sidebar.selectbox("Select Forecasting Model", [m[0] for m in sorted_models], index=0)
 
-        return y, selected_forecast
+    selected_forecast = model_outputs[selected_model][0]
+    forecast_index = pd.date_range(start=y.index[-1] + pd.Timedelta(days=1), periods=days_to_display)
+    forecast_series = pd.Series(selected_forecast.values, index=forecast_index)
 
-    except Exception as e:
-        st.error(f"Forecasting Error: {str(e)}")
-        return None, None
+    st.subheader(f"{selected_model} Forecast")
+    st.dataframe(forecast_series.rename("Forecast Price"))
+
+    return y, forecast_series
 
 def simulate_trade(account, w3):
     try:
@@ -180,6 +183,61 @@ def evaluate_performance(data, initial_capital):
     sharpe_ratio = daily_returns.mean() / daily_returns.std() * np.sqrt(252) if not daily_returns.empty else 0
     return total_return, max_drawdown, sharpe_ratio
 
+def evaluate_models(y, forecast_days):
+    results = {}
+    test_size = 5
+    train, test = y[:-test_size], y[-test_size:]
+
+    index_forecast = pd.date_range(start=y.index[-1] + pd.Timedelta(days=1), periods=forecast_days)
+
+    # AR Model
+    try:
+        model_ar = AutoReg(train, lags=5).fit()
+        forecast = model_ar.forecast(steps=forecast_days)
+        results["AR"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
+    except: pass
+
+    # IMA Model
+    try:
+        model_ima = ARIMA(train, order=(0,1,1)).fit()
+        forecast = model_ima.forecast(steps=forecast_days)
+        results["IMA"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
+    except: pass
+
+    # ARIMA Model
+    try:
+        model_arima = ARIMA(train, order=(5,1,0)).fit()
+        forecast = model_arima.forecast(steps=forecast_days)
+        results["ARIMA"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
+    except: pass
+
+    # SARIMA Model
+    try:
+        model_sarima = SARIMAX(train, order=(1,1,1), seasonal_order=(1,1,0,7)).fit(disp=False)
+        forecast = model_sarima.forecast(steps=forecast_days)
+        results["SARIMA"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
+    except: pass
+
+    # Exponential Smoothing
+    try:
+        model_ets = ExponentialSmoothing(train, trend="add", seasonal=None).fit()
+        forecast = model_ets.forecast(steps=forecast_days)
+        results["ETS"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
+    except: pass
+
+    # Prophet
+    try:
+        df_prophet = train.reset_index()
+        df_prophet.columns = ['ds', 'y']
+        model = Prophet()
+        model.fit(df_prophet)
+        future = model.make_future_dataframe(periods=forecast_days)
+        forecast = model.predict(future)[['ds', 'yhat']].set_index('ds').iloc[-forecast_days:]['yhat']
+        results["Prophet"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
+    except: pass
+
+    return results
+
 # --- Streamlit App ---
 st.title("🔍 Crypto Backtesting Engine + Web3 Execution")
 
@@ -215,7 +273,7 @@ if mode == "Live Data":
     try:
         df = fetch_ohlc_data(coin_id)
         df = apply_strategy(df, strategy_choice, **strategy_params)
-        actual_series, forecast_series = forecast_prices(df, forecast_days, model_type=model_choice)
+        actual_series, forecast_series = forecast_prices(df, forecast_days)
 
         fig = go.Figure(data=[
             go.Candlestick(x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name='Candles'),
@@ -256,7 +314,7 @@ elif mode == "Historical Data Upload":
             df = load_data(uploaded_file)
             df = apply_strategy(df, strategy_choice, **strategy_params)
             df = backtest(df, initial_capital, fee, max_trades, batch_size)
-            actual_series, forecast_series = forecast_prices(df, forecast_days, model_type=model_choice)
+            actual_series, forecast_series = forecast_prices(df, forecast_days)
 
             st.subheader("Strategy Results on Uploaded Data")
             fig = go.Figure()
