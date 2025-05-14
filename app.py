@@ -159,35 +159,56 @@ def backtest(data, initial_capital, fee, max_trades, batch_size):
     buy_signals = []
     sell_signals = []
 
+    if 'backtest_log' not in st.session_state:
+        st.session_state.backtest_log = []
+
     for index, row in data.iterrows():
+        action_taken = None
+        price = row['price']
+
         if row['signal'] == 1 and len(positions) < max_trades:
             trade_amount = capital * batch_size
             if trade_amount > 0:
                 position = {
-                    'amount': trade_amount / row['price'],
-                    'entry_price': row['price']
+                    'amount': trade_amount / price,
+                    'entry_price': price
                 }
                 positions.append(position)
                 capital -= trade_amount
                 capital *= (1 - fee)
-                buy_signals.append((index, row['price']))
+                buy_signals.append((index, price))
+                action_taken = "BUY"
             else:
                 buy_signals.append((index, None))
         else:
             buy_signals.append((index, None))
 
         if row['signal'] == -1 and positions:
-            sell_price = row['price']
+            sell_price = price
             for position in positions:
                 capital += position['amount'] * sell_price
                 capital *= (1 - fee)
             positions = []
             sell_signals.append((index, sell_price))
+            action_taken = "SELL"
         else:
             sell_signals.append((index, None))
 
-        portfolio_value = capital + sum(p['amount'] * row['price'] for p in positions)
+        portfolio_value = capital + sum(p['amount'] * price for p in positions)
         portfolio.append(portfolio_value)
+
+        # ✅ Store to log if any action taken
+        if action_taken:
+            last_value = st.session_state.backtest_log[-1]["Portfolio Value"] if st.session_state.backtest_log else initial_capital
+            pnl = round(portfolio_value - last_value, 2)
+
+            st.session_state.backtest_log.append({
+                "Time": index,
+                "Action": action_taken,
+                "Price": price,
+                "Portfolio Value": round(portfolio_value, 2),
+                "P&L": pnl
+            })
 
     data['portfolio'] = portfolio
     data['buy_signal'] = [x[1] for x in buy_signals]
@@ -385,6 +406,28 @@ elif mode == "Historical Data Upload":
             st.metric("Total Return (%)", f"{total_return:.2f}")
             st.metric("Max Drawdown (%)", f"{max_drawdown:.2f}")
             st.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
+
+            # Optional: Show Backtest Trade Log
+            if 'backtest_log' in st.session_state and st.session_state.backtest_log:
+                st.subheader("📜 Backtest Trade Log")
+                df_backtest_log = pd.DataFrame(st.session_state.backtest_log)
+                df_backtest_log_display = df_backtest_log[::-1]
+                
+                def highlight_pnl(row):
+                    color = "green" if row["P&L"] > 0 else ("red" if row["P&L"] < 0 else "gray")
+                    return ['background-color: {}'.format(color) if col == "P&L" else '' for col in row.index]
+
+                st.dataframe(df_backtest_log_display.style.apply(highlight_pnl, axis=1), use_container_width=True)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("🧹 Clear Backtest Log"):
+                        st.session_state.backtest_log = []
+                        st.experimental_rerun()
+
+                with col2:
+                    csv_bt = df_backtest_log_display.to_csv(index=False).encode("utf-8")
+                    st.download_button("💾 Download Backtest Log", data=csv_bt, file_name="backtest_log.csv", mime="text/csv")
 
         except Exception as e:
             st.error(f"File Error: {str(e)}")
