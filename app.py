@@ -255,7 +255,6 @@ elif strategy_choice == "Bollinger Bands":
     strategy_params = {"period": bb_period, "std_dev": bb_std_dev}
 
 forecast_days = st.sidebar.slider("Days to Forecast", 1, 7, 1)
-model_choice = st.sidebar.selectbox("Forecasting Model", ["AR", "IMA", "ARIMA"])
 
 if mode == "Historical Data Upload":
     with st.sidebar:
