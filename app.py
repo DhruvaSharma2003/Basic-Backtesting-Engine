@@ -181,7 +181,7 @@ def evaluate_performance(data, initial_capital):
     return total_return, max_drawdown, sharpe_ratio
 
 # --- Streamlit App ---
-st.title("\ud83d\udd0d Crypto Backtesting Engine + Web3 Execution")
+st.title("🔍 Crypto Backtesting Engine + Web3 Execution")
 
 mode = st.radio("Select Mode", ["Live Data", "Historical Data Upload"])
 
@@ -236,7 +236,7 @@ if mode == "Live Data":
         st.plotly_chart(fig, use_container_width=True)
 
         if df['signal'].iloc[-1] == 1:
-            if st.button("\ud83d\ude80 BUY Signal Detected: Execute Trade"):
+            if st.button("BUY Signal Detected: Execute Trade"):
                 w3 = Web3(Web3.HTTPProvider(DEFAULT_INFURA))
                 account = w3.eth.account.from_key(DEFAULT_PRIVATE_KEY)
                 tx_hash = simulate_trade(account, w3)
