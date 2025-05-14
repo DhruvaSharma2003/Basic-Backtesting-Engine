@@ -113,17 +113,36 @@ def simulate_trade(account, w3):
         nonce = w3.eth.get_transaction_count(account.address)
         tx = {
             'nonce': nonce,
-            'to': account.address,
+            'to': account.address,  # or change to '0x000000000000000000000000000000000000dead'
             'value': 0,
             'gas': 21000,
-            'gasPrice': w3.to_wei('10', 'gwei'),
+            'gasPrice': w3.to_wei('20', 'gwei'),
             'chainId': 11155111
         }
         signed_tx = account.sign_transaction(tx)
         tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        return w3.to_hex(tx_hash)
+        tx_hash_hex = w3.to_hex(tx_hash)
+
+        # ✅ Log the transaction in session state
+        st.session_state.trade_log.append({
+            "Tx Hash": tx_hash_hex,
+            "Status": "Success",
+            "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ETH Sent": 0.0,
+            "To": tx['to']
+        })
+
+        return tx_hash_hex
+
     except Exception as e:
-        st.error(f"Transaction Failed: {str(e)}")
+        st.session_state.trade_log.append({
+            "Tx Hash": "N/A",
+            "Status": f"Failed ({str(e)[:20]}...)",
+            "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ETH Sent": 0.0,
+            "To": "N/A"
+        })
+        st.error(f"Transaction Failed: {e}")
         return None
 
 def load_data(file):
@@ -248,6 +267,9 @@ def evaluate_models(y, forecast_days):
 # --- Streamlit App ---
 st.title("🔍 Crypto Backtesting Engine + Web3 Execution")
 
+if 'trade_log' not in st.session_state:
+    st.session_state.trade_log = []
+
 mode = st.radio("Select Mode", ["Live Data", "Historical Data Upload"])
 
 strategy_choice = st.sidebar.selectbox("Select Strategy", ["Simple Moving Average (SMA)", "Bollinger Bands"])
@@ -299,6 +321,7 @@ if mode == "Live Data":
         fig.update_layout(title=f"Candlestick Chart + {strategy_choice} + Forecast for {coin_name}", xaxis_title='Time', yaxis_title='Price')
         st.plotly_chart(fig, use_container_width=True)
 
+        # BUY Button
         if df['signal'].iloc[-1] == 1:
             if st.button("BUY Signal Detected: Execute Trade"):
                 w3 = Web3(Web3.HTTPProvider(DEFAULT_INFURA))
@@ -310,8 +333,26 @@ if mode == "Live Data":
         else:
             st.info("No Buy Signal at the latest point.")
 
+        # Trade Execution Log Panel
+        if st.session_state.trade_log:
+            st.subheader("🧾 Trade Execution Log")
+            df_log = pd.DataFrame(st.session_state.trade_log)
+            df_log_display = df_log[::-1]  # latest first
+            st.dataframe(df_log_display, use_container_width=True)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🧹 Clear Log"):
+                    st.session_state.trade_log = []
+                    st.experimental_rerun()
+
+            with col2:
+                csv_data = df_log_display.to_csv(index=False).encode('utf-8')
+                st.download_button("💾 Download Log", data=csv_data, file_name="trade_log.csv", mime="text/csv")
+
     except Exception as e:
         st.error(f"Error: {str(e)}")
+
 
 elif mode == "Historical Data Upload":
     uploaded_file = st.file_uploader("Upload Historical CSV (timestamp, price)", type="csv")
