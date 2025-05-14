@@ -288,6 +288,16 @@ def evaluate_models(y, forecast_days):
 
     return results
 
+def evaluate_performance(df, initial_capital):
+    portfolio = df['portfolio']
+    returns = portfolio.pct_change().dropna()
+
+    total_return = (portfolio.iloc[-1] - initial_capital) / initial_capital * 100
+    max_drawdown = ((portfolio.cummax() - portfolio) / portfolio.cummax()).max() * 100
+    sharpe_ratio = (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() != 0 else 0
+
+    return total_return, max_drawdown, sharpe_ratio
+
 # --- Streamlit App ---
 st.title("🔍 Crypto Backtesting Engine + Web3 Execution")
 
