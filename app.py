@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 from web3 import Web3
 import os
+import pytz
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.ar_model import AutoReg
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
@@ -127,7 +128,7 @@ def simulate_trade(account, w3):
         st.session_state.trade_log.append({
             "Tx Hash": tx_hash_hex,
             "Status": "Success",
-            "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Time": datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M:%S IST"),
             "ETH Sent": 0.0,
             "To": tx['to']
         })
@@ -138,7 +139,7 @@ def simulate_trade(account, w3):
         st.session_state.trade_log.append({
             "Tx Hash": "N/A",
             "Status": f"Failed ({str(e)[:20]}...)",
-            "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Time":  datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M:%S IST"),
             "ETH Sent": 0.0,
             "To": "N/A"
         })
@@ -365,7 +366,7 @@ if mode == "Live Data":
             with col1:
                 if st.button("🧹 Clear Log"):
                     st.session_state.trade_log = []
-                    st.experimental_rerun()
+                    st.rerun()
 
             with col2:
                 csv_data = df_log_display.to_csv(index=False).encode('utf-8')
@@ -423,7 +424,7 @@ elif mode == "Historical Data Upload":
                 with col1:
                     if st.button("🧹 Clear Backtest Log"):
                         st.session_state.backtest_log = []
-                        st.experimental_rerun()
+                        st.rerun()
 
                 with col2:
                     csv_bt = df_backtest_log_display.to_csv(index=False).encode("utf-8")
