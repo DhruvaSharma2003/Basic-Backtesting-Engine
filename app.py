@@ -55,10 +55,11 @@ def apply_strategy(df, strategy, **kwargs):
     df['buy_signal'] = np.nan
     df['sell_signal'] = np.nan
 
+    price_col = 'close' if 'close' in df.columns else 'price'
+
     if strategy == "Simple Moving Average (SMA)":
         short_window = kwargs.get("short_window", 5)
         long_window = kwargs.get("long_window", 15)
-        price_col = 'close' if 'close' in df.columns else 'price'
         df['SMA_short'] = df[price_col].rolling(window=short_window).mean()
         df['SMA_long'] = df[price_col].rolling(window=long_window).mean()
         df.loc[df['SMA_short'] > df['SMA_long'], 'signal'] = 1
