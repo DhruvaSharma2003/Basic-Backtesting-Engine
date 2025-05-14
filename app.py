@@ -175,55 +175,60 @@ def backtest(data, initial_capital, fee, max_trades, batch_size):
     data['sell_signal'] = [x[1] for x in sell_signals]
     return data
 
-def evaluate_performance(data, initial_capital):
-    final_value = data['portfolio'].iloc[-1]
-    total_return = (final_value - initial_capital) / initial_capital * 100
-    max_drawdown = (data['portfolio'] / data['portfolio'].cummax() - 1).min() * 100
-    daily_returns = data['portfolio'].pct_change().dropna()
-    sharpe_ratio = daily_returns.mean() / daily_returns.std() * np.sqrt(252) if not daily_returns.empty else 0
-    return total_return, max_drawdown, sharpe_ratio
-
 def evaluate_models(y, forecast_days):
     results = {}
     test_size = 5
     train, test = y[:-test_size], y[-test_size:]
 
-    index_forecast = pd.date_range(start=y.index[-1] + pd.Timedelta(days=1), periods=forecast_days)
+    def compute_rmse(actual, predicted):
+        actual = actual[:len(predicted)]
+        predicted = predicted[:len(actual)]
+        return np.sqrt(mean_squared_error(actual, predicted)) / np.mean(actual) * 100
 
     # AR Model
     try:
         model_ar = AutoReg(train, lags=5).fit()
         forecast = model_ar.forecast(steps=forecast_days)
-        results["AR"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
-    except: pass
+        rmse = compute_rmse(test, forecast)
+        results["AR"] = (forecast, rmse)
+    except:
+        pass
 
     # IMA Model
     try:
-        model_ima = ARIMA(train, order=(0,1,1)).fit()
+        model_ima = ARIMA(train, order=(0, 1, 1)).fit()
         forecast = model_ima.forecast(steps=forecast_days)
-        results["IMA"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
-    except: pass
+        rmse = compute_rmse(test, forecast)
+        results["IMA"] = (forecast, rmse)
+    except:
+        pass
 
     # ARIMA Model
     try:
-        model_arima = ARIMA(train, order=(5,1,0)).fit()
+        model_arima = ARIMA(train, order=(5, 1, 0)).fit()
         forecast = model_arima.forecast(steps=forecast_days)
-        results["ARIMA"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
-    except: pass
+        rmse = compute_rmse(test, forecast)
+        results["ARIMA"] = (forecast, rmse)
+    except:
+        pass
 
     # SARIMA Model
     try:
-        model_sarima = SARIMAX(train, order=(1,1,1), seasonal_order=(1,1,0,7)).fit(disp=False)
+        model_sarima = SARIMAX(train, order=(1, 1, 1), seasonal_order=(1, 1, 0, 7)).fit(disp=False)
         forecast = model_sarima.forecast(steps=forecast_days)
-        results["SARIMA"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
-    except: pass
+        rmse = compute_rmse(test, forecast)
+        results["SARIMA"] = (forecast, rmse)
+    except:
+        pass
 
     # Exponential Smoothing
     try:
         model_ets = ExponentialSmoothing(train, trend="add", seasonal=None).fit()
         forecast = model_ets.forecast(steps=forecast_days)
-        results["ETS"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
-    except: pass
+        rmse = compute_rmse(test, forecast)
+        results["ETS"] = (forecast, rmse)
+    except:
+        pass
 
     # Prophet
     try:
@@ -233,8 +238,10 @@ def evaluate_models(y, forecast_days):
         model.fit(df_prophet)
         future = model.make_future_dataframe(periods=forecast_days)
         forecast = model.predict(future)[['ds', 'yhat']].set_index('ds').iloc[-forecast_days:]['yhat']
-        results["Prophet"] = (forecast, np.sqrt(mean_squared_error(test[:forecast_days], forecast)) / np.mean(test[:forecast_days]) * 100)
-    except: pass
+        rmse = compute_rmse(test, forecast)
+        results["Prophet"] = (forecast, rmse)
+    except:
+        pass
 
     return results
 
