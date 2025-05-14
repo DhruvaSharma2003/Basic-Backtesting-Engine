@@ -58,22 +58,23 @@ def apply_strategy(df, strategy, **kwargs):
     if strategy == "Simple Moving Average (SMA)":
         short_window = kwargs.get("short_window", 5)
         long_window = kwargs.get("long_window", 15)
-        df['SMA_short'] = df['close'].rolling(window=short_window).mean()
-        df['SMA_long'] = df['close'].rolling(window=long_window).mean()
+        price_col = 'close' if 'close' in df.columns else 'price'
+        df['SMA_short'] = df[price_col].rolling(window=short_window).mean()
+        df['SMA_long'] = df[price_col].rolling(window=long_window).mean()
         df.loc[df['SMA_short'] > df['SMA_long'], 'signal'] = 1
         df.loc[df['SMA_short'] <= df['SMA_long'], 'signal'] = -1
 
     elif strategy == "Bollinger Bands":
         period = kwargs.get("period", 20)
         std_dev = kwargs.get("std_dev", 2.0)
-        df['MA'] = df['close'].rolling(window=period).mean()
-        df['BB_up'] = df['MA'] + std_dev * df['close'].rolling(window=period).std()
-        df['BB_down'] = df['MA'] - std_dev * df['close'].rolling(window=period).std()
-        df.loc[df['close'] < df['BB_down'], 'signal'] = 1
-        df.loc[df['close'] > df['BB_up'], 'signal'] = -1
+        df['MA'] = df[price_col].rolling(window=period).mean()
+        df['BB_up'] = df['MA'] + std_dev * df[price_col].rolling(window=period).std()
+        df['BB_down'] = df['MA'] - std_dev * df[price_col].rolling(window=period).std()
+        df.loc[df[price_col] < df['BB_down'], 'signal'] = 1
+        df.loc[df[price_col] > df['BB_up'], 'signal'] = -1
 
-    df['buy_signal'] = np.where((df['signal'] == 1) & (df['signal'].shift(1) != 1), df['close'], np.nan)
-    df['sell_signal'] = np.where((df['signal'] == -1) & (df['signal'].shift(1) != -1), df['close'], np.nan)
+    df['buy_signal'] = np.where((df['signal'] == 1) & (df['signal'].shift(1) != 1), df[price_col], np.nan)
+    df['sell_signal'] = np.where((df['signal'] == -1) & (df['signal'].shift(1) != -1), df[price_col], np.nan)
 
     return df
 
