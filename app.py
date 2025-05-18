@@ -299,7 +299,7 @@ def evaluate_performance(df, initial_capital):
     return total_return, max_drawdown, sharpe_ratio
 
 # --- Streamlit App ---
-st.title("🔍 Crypto Backtesting Engine + Web3 Execution")
+st.title("📊 Crypto Backtesting Engine + Web3 Execution")
 
 if 'trade_log' not in st.session_state:
     st.session_state.trade_log = []
